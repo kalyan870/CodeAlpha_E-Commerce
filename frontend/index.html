@@ -151,7 +151,7 @@ body { font-family:'Inter',sans-serif; background:#f5f7fa; color:#1a1a2e; }
 <div class="toast" id="toast"></div>
 
 <script>
-const API = window.location.origin.includes('hf.space') ? '' : 'http://localhost:7860';
+const API = '';
 let token = localStorage.getItem('token') || '';
 let cart = JSON.parse(localStorage.getItem('cart') || '[]');
 let currentProduct = null;
@@ -249,13 +249,10 @@ function removeFromCart(i) { cart.splice(i, 1); updateCartBadge(); renderCart();
 async function checkout() {
   if (!token) { toast('Please login first'); showAuth(); return; }
   let items = [];
-  let total = 0;
   for (const c of cart) {
-    const p = await api(`/api/products/${c.product_id}`);
     items.push({ product_id: c.product_id, quantity: c.quantity });
-    total += p.price * c.quantity;
   }
-  const res = await api('/api/orders', { method: 'POST', body: JSON.stringify({ items, total }) });
+  const res = await api('/api/orders', { method: 'POST', body: JSON.stringify({ items }) });
   if (res.id) { toast('Order placed!'); cart = []; updateCartBadge(); renderCart(); showPage('orders'); }
   else toast('Checkout failed');
 }

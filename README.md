@@ -21,9 +21,11 @@ flowchart LR
 
 ## Run and deployment status
 
-The backend requirements are listed in `backend/requirements.txt`; the included Dockerfile targets port `7860`. Review the Docker build context and the hard-coded `/data` database location before using that Dockerfile as a deployment recipe: from the current repository layout, its `COPY` paths and data directory need a matching build context and persistent volume.
+The backend uses salted PBKDF2 password hashes, bearer headers, server-calculated order totals, atomic stock checks, bounded inputs, and configurable CORS (`CORS_ORIGINS`). Set `APP_DATA_DIR` to persistent writable storage. A first admin can be configured with `ADMIN_EMAIL` and a strong `ADMIN_PASSWORD` of at least 16 characters; an old default admin credential is disabled on database startup.
 
-This repository is a prototype, not a production checkout service. The current code should receive a security and payment review before handling real credentials, orders, or customer data. Do not treat the presence of an orders table as payment processing.
+Build from the repository root with `docker build -f backend/Dockerfile -t codealpha-ecommerce .`. The container exposes port `7860`; mount persistent storage at `/data` or set `APP_DATA_DIR`.
+
+This remains a learning prototype, not a production checkout service: sessions are held in process memory, and there is no payment processing, rate limiting, or multi-instance database setup. Do not handle real customer orders or payment data without those systems and a deployment review.
 
 ## Project media
 
