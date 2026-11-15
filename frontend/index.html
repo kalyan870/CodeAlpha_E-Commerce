@@ -151,7 +151,7 @@ body { font-family:'Inter',sans-serif; background:#f5f7fa; color:#1a1a2e; }
 <div class="toast" id="toast"></div>
 
 <script>
-const API = window.location.origin.includes('hf.space') ? '' : 'http://localhost:7860';
+const API = '';
 let token = localStorage.getItem('token') || '';
 let cart = JSON.parse(localStorage.getItem('cart') || '[]');
 let currentProduct = null;
@@ -164,6 +164,14 @@ function api(path, opts = {}) {
 
 function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
 
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+function safeImageUrl(value) {
+  try {
+    const url = new URL(String(value || ''), window.location.origin);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : 'https://picsum.photos/seed/error/400/400';
+  } catch { return 'https://picsum.photos/seed/error/400/400'; }
+}
+
 function updateCartBadge() { const c = document.getElementById('cartCount'); if (cart.length) { c.textContent = cart.reduce((a,b) => a + b.quantity, 0); c.classList.remove('hidden'); } else c.classList.add('hidden'); localStorage.setItem('cart', JSON.stringify(cart)); }
 
 async function loadProducts() {
@@ -171,13 +179,13 @@ async function loadProducts() {
   const products = await api(`/api/products${cat ? '?category=' + cat : ''}`);
   const grid = document.getElementById('productGrid');
   grid.innerHTML = products.map(p => `
-    <div class="card" onclick="showProduct(${p.id})">
-      <img src="${p.image}" alt="${p.name}" onerror="this.src='https://picsum.photos/seed/error/400/400'">
+    <div class="card" onclick="showProduct(${Number(p.id)})">
+      <img src="${escapeHtml(safeImageUrl(p.image))}" alt="${escapeHtml(p.name)}" onerror="this.src='https://picsum.photos/seed/error/400/400'">
       <div class="card-body">
-        <h3>${p.name}</h3>
-        <div class="price">$${p.price.toFixed(2)}</div>
-        <div class="desc">${p.description.substring(0,80)}${p.description.length>80?'...':''}</div>
-        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();addToCart(${p.id})">Add to Cart</button>
+        <h3>${escapeHtml(p.name)}</h3>
+        <div class="price">$${Number(p.price).toFixed(2)}</div>
+        <div class="desc">${escapeHtml(String(p.description || '').substring(0,80))}${String(p.description || '').length>80?'...':''}</div>
+        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();addToCart(${Number(p.id)})">Add to Cart</button>
       </div>
     </div>`).join('');
 }
@@ -188,7 +196,7 @@ async function showProduct(id) {
   document.getElementById('detailImg').src = p.image;
   document.getElementById('detailName').textContent = p.name;
   document.getElementById('detailDesc').textContent = p.description;
-  document.getElementById('detailPrice').textContent = `$${p.price.toFixed(2)}`;
+  document.getElementById('detailPrice').textContent = `$${Number(p.price).toFixed(2)}`;
   document.getElementById('detailStock').textContent = p.stock;
   document.getElementById('productModal').classList.remove('hidden');
 }
@@ -249,13 +257,10 @@ function removeFromCart(i) { cart.splice(i, 1); updateCartBadge(); renderCart();
 async function checkout() {
   if (!token) { toast('Please login first'); showAuth(); return; }
   let items = [];
-  let total = 0;
   for (const c of cart) {
-    const p = await api(`/api/products/${c.product_id}`);
     items.push({ product_id: c.product_id, quantity: c.quantity });
-    total += p.price * c.quantity;
   }
-  const res = await api('/api/orders', { method: 'POST', body: JSON.stringify({ items, total }) });
+  const res = await api('/api/orders', { method: 'POST', body: JSON.stringify({ items }) });
   if (res.id) { toast('Order placed!'); cart = []; updateCartBadge(); renderCart(); showPage('orders'); }
   else toast('Checkout failed');
 }
@@ -266,8 +271,8 @@ async function loadOrders() {
   const div = document.getElementById('ordersList');
   if (!orders.length) { div.innerHTML = '<div class="empty-state"><h3>No orders yet</h3></div>'; return; }
   div.innerHTML = orders.map(o => `<div style="background:#fff;padding:16px;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-    <div style="display:flex;justify-content:space-between;"><strong>Order #${o.id}</strong><span style="color:#6c63ff;font-weight:600;">$${o.total.toFixed(2)}</span></div>
-    <div style="font-size:12px;color:#888;margin-top:4px;">${o.created_at} · ${o.status}</div>
+    <div style="display:flex;justify-content:space-between;"><strong>Order #${Number(o.id)}</strong><span style="color:#6c63ff;font-weight:600;">$${Number(o.total).toFixed(2)}</span></div>
+    <div style="font-size:12px;color:#888;margin-top:4px;">${escapeHtml(o.created_at)} · ${escapeHtml(o.status)}</div>
   </div>`).join('');
 }
 
@@ -306,8 +311,8 @@ async function loadAdminProducts() {
   const products = await api('/api/products');
   const grid = document.getElementById('adminProductGrid');
   grid.innerHTML = products.map(p => `<div style="background:#fff;padding:16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-    <h4>${p.name}</h4><div style="font-size:13px;color:#888;">$${p.price.toFixed(2)} · Stock: ${p.stock}</div>
-    <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="deleteProd(${p.id})">Delete</button>
+    <h4>${escapeHtml(p.name)}</h4><div style="font-size:13px;color:#888;">$${Number(p.price).toFixed(2)} · Stock: ${p.stock}</div>
+    <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="deleteProd(${Number(p.id)})">Delete</button>
   </div>`).join('');
 }
 
