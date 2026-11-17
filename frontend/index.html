@@ -105,14 +105,11 @@ body { font-family:'Inter',sans-serif; background:#f5f7fa; color:#1a1a2e; }
 <!-- Auth Modal -->
 <div class="modal hidden" id="authModal">
   <div class="modal-content">
-    <h3 id="authTitle">Login</h3>
-    <div class="form-group hidden" id="nameGroup"><label>Name</label><input id="regName" placeholder="Your name"></div>
-    <div class="form-group"><label>Email</label><input id="authEmail" type="email" placeholder="you@example.com"></div>
-    <div class="form-group"><label>Password</label><input id="authPassword" type="password" placeholder="******"></div>
-    <button class="btn btn-primary" style="width:100%;margin-bottom:8px;" onclick="handleAuth()" id="authSubmit">Login</button>
+    <h3 id="authTitle">Sign in</h3>
+    <div id="clerkAuthMount" style="min-height:220px;margin:12px 0;"></div>
     <p style="text-align:center;font-size:13px;color:#777;">
-      <span id="authToggleText">Don't have an account?</span>
-      <a href="#" onclick="toggleAuth()" id="authToggleLink">Register</a>
+      <span id="authToggleText">New to the store?</span>
+      <a href="#" onclick="toggleAuth(event)" id="authToggleLink">Create account</a>
     </p>
     <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="closeAuth()">Close</button>
   </div>
@@ -152,14 +149,17 @@ body { font-family:'Inter',sans-serif; background:#f5f7fa; color:#1a1a2e; }
 
 <script>
 const API = '';
-let token = localStorage.getItem('token') || '';
+let clerk = null;
+let authMode = 'sign-in';
 let cart = JSON.parse(localStorage.getItem('cart') || '[]');
 let currentProduct = null;
 
-function api(path, opts = {}) {
+async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json' };
+  const token = clerk?.session ? await clerk.session.getToken() : null;
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(`${API}${path}`, { ...opts, headers }).then(r => r.json());
+  const response = await fetch(`${API}${path}`, { ...opts, headers });
+  return response.json();
 }
 
 function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
@@ -255,7 +255,7 @@ function renderCart() {
 function removeFromCart(i) { cart.splice(i, 1); updateCartBadge(); renderCart(); }
 
 async function checkout() {
-  if (!token) { toast('Please login first'); showAuth(); return; }
+  if (!clerk?.user) { toast('Please sign in first'); showAuth(); return; }
   let items = [];
   for (const c of cart) {
     items.push({ product_id: c.product_id, quantity: c.quantity });
@@ -266,7 +266,7 @@ async function checkout() {
 }
 
 async function loadOrders() {
-  if (!token) { document.getElementById('ordersList').innerHTML = '<div class="empty-state"><h3>Login to view orders</h3></div>'; return; }
+  if (!clerk?.user) { document.getElementById('ordersList').innerHTML = '<div class="empty-state"><h3>Sign in to view orders</h3></div>'; return; }
   const orders = await api('/api/orders');
   const div = document.getElementById('ordersList');
   if (!orders.length) { div.innerHTML = '<div class="empty-state"><h3>No orders yet</h3></div>'; return; }
@@ -276,35 +276,82 @@ async function loadOrders() {
   </div>`).join('');
 }
 
-function showAuth() { document.getElementById('authModal').classList.remove('hidden'); }
-function closeAuth() { document.getElementById('authModal').classList.add('hidden'); }
-let isLogin = true;
-function toggleAuth() {
-  isLogin = !isLogin;
-  document.getElementById('authTitle').textContent = isLogin ? 'Login' : 'Register';
-  document.getElementById('authSubmit').textContent = isLogin ? 'Login' : 'Register';
-  document.getElementById('nameGroup').classList.toggle('hidden', isLogin);
-  document.getElementById('authToggleText').textContent = isLogin ? "Don't have an account?" : "Already have an account?";
-  document.getElementById('authToggleLink').textContent = isLogin ? 'Register' : 'Login';
+function showAuth() {
+  document.getElementById('authModal').classList.remove('hidden');
+  if (clerk) mountClerkAuth();
+  else document.getElementById('clerkAuthMount').textContent = 'Sign-in is not configured. Add the public Clerk key to the server environment.';
 }
-
-async function handleAuth() {
-  const email = document.getElementById('authEmail').value;
-  const password = document.getElementById('authPassword').value;
-  if (isLogin) {
-    const res = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-    if (res.token) { token = res.token; localStorage.setItem('token', token); document.getElementById('authLink').textContent = 'Logout'; document.getElementById('userName').textContent = res.user.name; document.getElementById('userName').classList.remove('hidden'); document.getElementById('authLink').onclick = logout; closeAuth(); if(res.user.is_admin) document.getElementById('adminLink').classList.remove('hidden'); toast('Welcome!'); }
-    else toast(res.detail || 'Login failed');
-  } else {
-    const name = document.getElementById('regName').value;
-    if (!name) { toast('Enter your name'); return; }
-    const res = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, email, password }) });
-    if (res.token) { token = res.token; localStorage.setItem('token', token); document.getElementById('authLink').textContent = 'Logout'; document.getElementById('userName').textContent = res.user.name; document.getElementById('userName').classList.remove('hidden'); document.getElementById('authLink').onclick = logout; closeAuth(); toast('Registered!'); }
-    else toast(res.detail || 'Registration failed');
+function closeAuth() {
+  if (clerk) {
+    const root = document.getElementById('clerkAuthMount');
+    if (authMode === 'sign-in') clerk.unmountSignIn(root); else clerk.unmountSignUp(root);
+    root.replaceChildren();
   }
+  document.getElementById('authModal').classList.add('hidden');
+}
+function toggleAuth(event) {
+  event?.preventDefault();
+  authMode = authMode === 'sign-in' ? 'sign-up' : 'sign-in';
+  document.getElementById('authTitle').textContent = authMode === 'sign-in' ? 'Sign in' : 'Create account';
+  document.getElementById('authToggleText').textContent = authMode === 'sign-in' ? 'New to the store?' : 'Already have an account?';
+  document.getElementById('authToggleLink').textContent = authMode === 'sign-in' ? 'Create account' : 'Sign in';
+  if (clerk) mountClerkAuth();
+}
+function mountClerkAuth() {
+  const root = document.getElementById('clerkAuthMount');
+  root.replaceChildren();
+  if (authMode === 'sign-in') clerk.mountSignIn(root); else clerk.mountSignUp(root);
+}
+async function logout() {
+  if (clerk) await clerk.signOut();
+  await syncAuthUI();
+  toast('Signed out');
 }
 
-function logout() { token = ''; localStorage.removeItem('token'); document.getElementById('authLink').textContent = 'Login'; document.getElementById('authLink').onclick = showAuth; document.getElementById('userName').classList.add('hidden'); document.getElementById('adminLink').classList.add('hidden'); toast('Logged out'); }
+function loadScript(src, attributes = {}) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    Object.entries(attributes).forEach(([name, value]) => script.setAttribute(name, value));
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Clerk script could not be loaded'));
+    document.head.appendChild(script);
+  });
+}
+
+async function initClerk() {
+  const { clerk_publishable_key: key } = await fetch('/api/public-config').then(response => response.json());
+  if (!key) return;
+  const frontendApi = atob(key.split('_')[2]).slice(0, -1);
+  await loadScript(`https://${frontendApi}/npm/@clerk/ui@1/dist/ui.browser.js`);
+  await loadScript(`https://${frontendApi}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, { 'data-clerk-publishable-key': key });
+  if (typeof window.Clerk !== 'function') throw new Error('Clerk SDK did not initialize');
+  clerk = new window.Clerk(key);
+  await clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+  clerk.addListener(() => { void syncAuthUI(); });
+  await syncAuthUI();
+}
+
+async function syncAuthUI() {
+  const authLink = document.getElementById('authLink');
+  const userName = document.getElementById('userName');
+  if (!clerk?.user) {
+    authLink.textContent = 'Login';
+    authLink.onclick = showAuth;
+    userName.classList.add('hidden');
+    document.getElementById('adminLink').classList.add('hidden');
+    return;
+  }
+  authLink.textContent = 'Logout';
+  authLink.onclick = logout;
+  userName.textContent = clerk.user.fullName || clerk.user.primaryEmailAddress?.emailAddress || 'Shopper';
+  userName.classList.remove('hidden');
+  const profile = await api('/api/me');
+  document.getElementById('adminLink').classList.toggle('hidden', !profile.is_admin);
+  if (!document.getElementById('authModal').classList.contains('hidden')) closeAuth();
+}
 
 // Admin
 async function loadAdminProducts() {
@@ -331,17 +378,11 @@ async function deleteProd(id) { await api(`/api/products/${id}`, { method: 'DELE
 
 // Init
 async function init() {
-  loadProducts();
-  const stored = localStorage.getItem('token');
-  if (stored) {
-    token = stored;
-    const user = await api('/api/me');
-    if (user.id) { document.getElementById('authLink').textContent = 'Logout'; document.getElementById('authLink').onclick = logout; document.getElementById('userName').textContent = user.name; document.getElementById('userName').classList.remove('hidden'); if(user.is_admin) document.getElementById('adminLink').classList.remove('hidden'); }
-    else { token = ''; localStorage.removeItem('token'); }
-  }
+  try { await initClerk(); } catch { toast('Authentication setup could not be loaded'); }
+  await loadProducts();
   updateCartBadge();
 }
-init();
+void init();
 </script>
 </body>
 </html>
