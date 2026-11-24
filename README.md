@@ -1,38 +1,39 @@
 # CodeAlpha E-Commerce
 
-<p align="center"><strong>A compact e-commerce prototype with a FastAPI service, product and order records, and a browser storefront.</strong></p>
-
-<p align="center">Python · FastAPI · SQLite · HTML/CSS/JavaScript</p>
-
-## Project overview
-
-The backend in `backend/app/main.py` serves the storefront and defines the API for user accounts, products, and orders. It creates SQLite tables for users, products, and orders. The `frontend/` folder currently contains the storefront entry page and its referenced static assets.
+A browser storefront and FastAPI API for a sample catalog, shopping cart, and orders. Clerk owns shopper identity; the API verifies Clerk session tokens. Neon stores products and orders. Product images are URL references only, so this prototype has no file-upload flow and does not use R2.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  U[Shopper] --> F[Browser storefront]
-  F --> A[FastAPI service]
-  A --> R[Account, catalog, and order routes]
-  R --> D[(SQLite database)]
-  D --> R --> F
+  S[Shopper] --> UI[Browser storefront]
+  UI -->|Clerk session token| API[FastAPI]
+  API -->|Verify token| C[Clerk]
+  API -->|Server-only DATABASE_URL| N[Neon PostgreSQL]
+  N --> P[(Products and orders)]
 ```
 
-## Run and deployment status
+## Configure Neon and Clerk
 
-The backend requirements are listed in `backend/requirements.txt`; the included Dockerfile targets port `7860`. Review the Docker build context and the hard-coded `/data` database location before using that Dockerfile as a deployment recipe: from the current repository layout, its `COPY` paths and data directory need a matching build context and persistent volume.
+1. Create a Clerk application and enable the sign-in methods you want.
+2. Create a Neon PostgreSQL database.
+3. Apply [`backend/migrations/0001_initial.sql`](backend/migrations/0001_initial.sql) in Neon SQL Editor or with `psql`.
+4. Copy `backend/.env.example` to `backend/.env`; configure the Clerk publishable key, secret key, JWT public key, authorized frontend origins, Neon `DATABASE_URL`, and your administrator's Clerk user ID.
+5. Keep `CLERK_SECRET_KEY`, `CLERK_JWT_KEY`, and `DATABASE_URL` in the backend only. The publishable key is returned through `/api/public-config` and is safe for the browser.
 
-This repository is a prototype, not a production checkout service. The current code should receive a security and payment review before handling real credentials, orders, or customer data. Do not treat the presence of an orders table as payment processing.
+The former local-password user database is removed. Existing user rows cannot be safely mapped to Clerk identities automatically. Admin access is granted only to IDs in `ADMIN_CLERK_USER_IDS`.
 
-## Project media
+## Local run and checks
 
-- [Recorded demo](httpsca-ecommerce-phi.vercel.app.mp4)
-- [Interface capture](httpsca-project-mgmt.vercel.applogin.png)
+Set the environment in `backend/.env`, then install and run:
 
-## Project structure
+```bash
+python -m pip install -r backend/requirements-dev.txt
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 7860
+pytest -q
+```
 
-- `backend/app/main.py` — FastAPI app and SQLite setup
-- `backend/requirements.txt` — Python packages
-- `backend/Dockerfile` — container recipe (see build-context note above)
-- `frontend/index.html` — storefront entry page
+For tests and local development only, set `DATABASE_URL=sqlite:///./local-test.db`; the app creates and seeds that SQLite demo database. Production requires Neon and the checked-in migration. Configure the hosting environment with the same server-side variables before deploying.
+
+This is a learning storefront, not a production payment system. It does not process payments.
