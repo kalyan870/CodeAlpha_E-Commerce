@@ -2,5 +2,5 @@ fastapi==0.115.6
 uvicorn==0.34.0
 python-multipart==0.0.20
 SQLAlchemy>=2.0,<3.0
-psycopg[binary]>=3.2,<4.0
+psycopg[binary]>=3.3.9,<4.0
 clerk-backend-api>=7.0,<8.0
