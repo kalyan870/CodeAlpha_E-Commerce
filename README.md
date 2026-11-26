@@ -1,8 +1,14 @@
 # CodeAlpha E-Commerce
 
 A browser storefront and FastAPI API for a sample catalog, shopping cart, and orders. Clerk owns shopper identity; the API verifies Clerk session tokens. Neon stores products and orders. Product images are URL references only, so this prototype has no file-upload flow and does not use R2.
+**Live link:** [https://codealpha-ecommerce-seven.vercel.app](https://codealpha-ecommerce-seven.vercel.app)
 
 ## Architecture
+
+![CodeAlpha_E-Commerce architecture map](docs/images/codealpha-e-commerce-architecture.png)
+
+[Architecture notes](docs/architecture.md) · [Editable SVG](docs/images/codealpha-e-commerce-architecture.svg)
+
 
 ```mermaid
 flowchart LR
